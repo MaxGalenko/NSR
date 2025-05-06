@@ -1,2 +1,3 @@
 # NSR
-This is a personal project where I create a parkour platformer and implement some popular mechanics.
+## Never Stop Running
+NSR is a personal project made in Unity that focuses on the parkour platformer gameloop that utilizes some popular game mechanics from this genre.
