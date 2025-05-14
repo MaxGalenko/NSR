@@ -1,47 +1,119 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
+[RequireComponent(typeof(Rigidbody), typeof(PlayerInput))]
 public class PlayerController : MonoBehaviour
 {
-    PlayerInput playerInput;
-    InputAction moveAction;
-    InputAction jumpAction;
+    [Header("References")]
+    public Transform playerCamera;
+    public Transform groundCheck;
+    public LayerMask groundMask;
 
-    private float speed = 5;
-    private float jumpForce = 5f;
+    [Header("Movement Settings")]
+    private float moveSpeed = 7f;
+    private float airControlMultiplier = 0.6f;
+    private float acceleration = 10f;
+
+    [Header("Jump Settings")]
+    private float jumpForce = 6f;
+    private float jumpCooldown = 0.2f;
+    private bool readyToJump = true;
+
+    [Header("Look Settings")]
+    private float mouseSensitivity = 50f;
+
+    [Header("Ground Check")]
+    private float groundCheckDistance = 0.3f;
+
+    // Internal state
+    private Rigidbody rb;
+    private PlayerInput playerInput;
+    private InputAction moveAction;
+    private InputAction jumpAction;
+    private InputAction lookAction;
+
+    private Vector2 moveInput;
+    private Vector2 lookInput;
     private bool isGrounded;
+    private float xRotation;
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    private void Awake()
     {
+        rb = GetComponent<Rigidbody>();
+        rb.freezeRotation = true;
+
         playerInput = GetComponent<PlayerInput>();
-        moveAction = playerInput.actions.FindAction("Move");
-        jumpAction = playerInput.actions.FindAction("Jump");
+        moveAction = playerInput.actions["Move"];
+        jumpAction = playerInput.actions["Jump"];
+        lookAction = playerInput.actions["Look"];
     }
 
-    // Update is called once per frame
-    void Update()
+    private void Start()
     {
-        if (jumpAction.IsPressed())
-        {
-            JumpPlayer();
-        }
-        Physics.gravity = new Vector3(0, -1f, 0);
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+    }
+
+    private void Update()
+    {
+        HandleLook();
+        moveInput = moveAction.ReadValue<Vector2>();
+        if (jumpAction.WasPerformedThisFrame()) AttemptJump();
     }
 
     private void FixedUpdate()
     {
-        MovePlayer();
+        CheckGround();
+        HandleMovement();
     }
 
-    void MovePlayer()
+    private void HandleLook()
     {
-        Vector2 direction = moveAction.ReadValue<Vector2>();
-        transform.position += new Vector3(direction.x, 0, direction.y) * Time.deltaTime * speed;
+        lookInput = lookAction.ReadValue<Vector2>() * mouseSensitivity * Time.deltaTime;
+
+        xRotation -= lookInput.y;
+        xRotation = Mathf.Clamp(xRotation, -90f, 90f);
+
+        playerCamera.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+        transform.Rotate(Vector3.up * lookInput.x);
     }
 
-    void JumpPlayer()
+    private void HandleMovement()
     {
-        transform.position += new Vector3(0, 5f, 0) * Time.deltaTime;
+        Vector3 inputDirection = transform.right * moveInput.x + transform.forward * moveInput.y;
+        inputDirection.Normalize();
+
+        float multiplier = isGrounded ? 1f : airControlMultiplier;
+        Vector3 targetVelocity = inputDirection * moveSpeed * multiplier;
+
+        Vector3 velocityChange = (targetVelocity - new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z)) * acceleration;
+        velocityChange.y = 0f;
+
+        rb.AddForce(velocityChange, ForceMode.Acceleration);
+    }
+
+    private void AttemptJump()
+    {
+        if (!readyToJump || !isGrounded) return;
+
+        readyToJump = false;
+
+        Vector3 velocity = rb.linearVelocity;
+        velocity.y = 0f; // reset vertical velocity
+        rb.linearVelocity = velocity;
+
+        rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+
+        Invoke(nameof(ResetJump), jumpCooldown);
+    }
+
+    private void CheckGround()
+    {
+        isGrounded = Physics.Raycast(groundCheck.position, Vector3.down, groundCheckDistance, groundMask);
+    }
+
+    private void ResetJump()
+    {
+        readyToJump = true;
     }
 }
